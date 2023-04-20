@@ -55,13 +55,13 @@ coef <- merge(pib_h, migrat, all = T) |>
 
 
 if(coef$estimate[2] < 0){
-  eq <- substitute(italic(y) == a - b~italic(x)*","~~italic(r)^2~"="~r2*","~~italic(p)~"="~p.value,
+  eq <- substitute(italic(y) == a - b~italic(log10(x))*","~~italic(r)^2~"="~r2*","~~italic(p)~"="~p.value,
                    list(        a = format(coef$estimate[1], digits = 4),
                                 b = format(abs(coef$estimate[2]), digits = 4),
                                 r2 = format(perf$r.squared, digits = 3),
                                 p.value = format(as.numeric(perf$p.value), digits = 3)))
 }else{
-  eq <- substitute(italic(y) == a + b~italic(x)*","~~italic(r)^2~"="~r2*","~~italic(p)~"="~p.value,
+  eq <- substitute(italic(y) == a + b~italic(log10(x))*","~~italic(r)^2~"="~r2*","~~italic(p)~"="~p.value,
                    list(        a = format(coef$estimate[1], digits = 4),
                                 b = format(abs(coef$estimate[2]), digits = 4),
                                 r2 = format(perf$r.squared, digits = 3),
