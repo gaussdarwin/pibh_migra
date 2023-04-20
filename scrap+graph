@@ -1,0 +1,101 @@
+library(rvest)
+library(tidyverse)
+library(stringi)
+library(polite)
+library(httr)
+library(janitor)
+library(broom)
+library(ggrepel)
+options( scipen = 20 )
+
+migrat <- "https://fr.wikipedia.org/wiki/Liste_des_pays_par_taux_de_solde_migratoire" |>
+  bow() |>
+  scrape() |>
+  html_nodes("table.wikitable") |>
+  html_table(fill = T) %>%
+  .[[1]] |>
+  clean_names() |>
+  rename(pays = 1)
+
+pib_h <- "https://fr.wikipedia.org/wiki/Liste_des_pays_par_PIB_(PPA)_par_habitant" |>
+  bow() |>
+  scrape() |>
+  html_nodes("table.wikitable") |>
+  html_table(fill = T) %>%
+  .[[1]] |>
+  clean_names() |>
+  rename(pays = 2) |>
+  mutate(pays = str_remove_all(pays, 'note 4'),
+         pays = str_remove(pays, 'note 3'),
+         pays = str_remove(pays, '\\['),
+         pays = str_remove(pays, '\\]'),
+         pib_h = as.numeric(str_remove(pib_par_habitant_a, "[:blank:]"))) |>
+  select(c(2, 4))
+
+
+perf <- merge(pib_h, migrat, all = T) |>
+  tibble() |>
+  mutate(pib_h = str_replace(pib_h, ",", "."),
+         solde_migrat20 = str_replace(solde_migratoire_hab_2015_2020_projection, ",", "."),
+         pib_h = as.numeric(str_replace(pib_h, "−", "-")),
+         solde_migrat20 = as.numeric(str_replace(solde_migrat20, "−", "-"))) |>
+  drop_na() %>%
+  lm(data = ., solde_migrat20 ~ log10(pib_h)) |>
+  glance()
+
+coef <- merge(pib_h, migrat, all = T) |>
+  tibble() |>
+  mutate(pib_h = str_replace(pib_h, ",", "."),
+         solde_migrat20 = str_replace(solde_migratoire_hab_2015_2020_projection, ",", "."),
+         pib_h = as.numeric(str_replace(pib_h, "−", "-")),
+         solde_migrat20 = as.numeric(str_replace(solde_migrat20, "−", "-"))) |>
+  drop_na() %>%
+  lm(data = ., solde_migrat20 ~ log10(pib_h)) |>
+  tidy()
+
+
+if(coef$estimate[2] < 0){
+  eq <- substitute(italic(y) == a - b~italic(x)*","~~italic(r)^2~"="~r2*","~~italic(p)~"="~p.value,
+                   list(        a = format(coef$estimate[1], digits = 4),
+                                b = format(abs(coef$estimate[2]), digits = 4),
+                                r2 = format(perf$r.squared, digits = 3),
+                                p.value = format(as.numeric(perf$p.value), digits = 3)))
+}else{
+  eq <- substitute(italic(y) == a + b~italic(x)*","~~italic(r)^2~"="~r2*","~~italic(p)~"="~p.value,
+                   list(        a = format(coef$estimate[1], digits = 4),
+                                b = format(abs(coef$estimate[2]), digits = 4),
+                                r2 = format(perf$r.squared, digits = 3),
+                                p.value = format(as.numeric(perf$p.value), digits = 3)))
+}
+
+
+dftext <- data.frame(x = 3000, y = 25, eq = as.character(as.expression(eq)))
+
+
+merge(pib_h, migrat, all = T) |>
+  tibble() |>
+  mutate(pib_h = str_replace(pib_h, ",", "."),
+         solde_migrat20 = str_replace(solde_migratoire_hab_2015_2020_projection, ",", "."),
+         pib_h = as.numeric(str_replace(pib_h, "−", "-")),
+         solde_migrat20 = as.numeric(str_replace(solde_migrat20, "−", "-"))) |>
+  mutate(fr = case_when(
+    pays == "France" ~ "France",
+    T ~ ""
+  ), 
+  pays = case_when(
+    pays == "France" ~ "",
+    T ~ pays
+  )) |>
+  drop_na() |>
+  ggplot() + 
+  geom_point(aes(x = pib_h, y = solde_migrat20)) + 
+  geom_smooth(aes(x = pib_h, y = solde_migrat20), method = "lm", color = "black") + 
+  geom_text_repel(aes(x = pib_h, y = solde_migrat20, label = pays)) +
+  geom_text_repel(aes(x = pib_h, y = solde_migrat20, label = fr), color = "red") +
+  geom_text(data = dftext, aes(x = x, y = y, label = eq), parse = T, size = 6) +
+  labs(x = "PIB/hab ($US, Source : FMI 2017)",
+       y = "Solde migratoire (%, Source : ONU 2019)") + 
+  scale_x_log10() + 
+  theme_bw() + 
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 14))
